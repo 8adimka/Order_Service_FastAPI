@@ -6,7 +6,7 @@ from fastapi.security import OAuth2PasswordBearer
 
 from .config import settings
 
-oauth2_scheme = OAuth2PasswordBearer(tokenUrl="token")
+oauth2_scheme = OAuth2PasswordBearer(tokenUrl="http://localhost:8001/auth/token/")
 
 
 def get_current_user(token: Annotated[str, Depends(oauth2_scheme)]) -> int:
@@ -16,8 +16,9 @@ def get_current_user(token: Annotated[str, Depends(oauth2_scheme)]) -> int:
         headers={"WWW-Authenticate": "Bearer"},
     )
     try:
+        # Используем публичный ключ для проверки токена (RS256)
         payload = jwt.decode(
-            token, settings.secret_key, algorithms=[settings.algorithm]
+            token, settings.public_key, algorithms=[settings.algorithm]
         )
         user_id: str = payload.get("sub")
         if user_id is None:

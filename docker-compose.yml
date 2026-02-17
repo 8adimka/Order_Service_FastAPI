@@ -20,7 +20,7 @@ services:
     hostname: kafka
     depends_on:
       zookeeper:
-        condition: service_healthy
+        condition: service_started
     ports:
       - "9092:9092"
       - "29092:29092"
@@ -104,6 +104,10 @@ services:
         condition: service_healthy
     env_file:
       - .env
+    volumes:
+      - ./keys:/app/keys:ro
+    command: >
+      sh -c "uvicorn app.main:app --host 0.0.0.0 --port 8000"
     restart: unless-stopped
 
   orders:
@@ -117,9 +121,11 @@ services:
       redis:
         condition: service_healthy
       kafka:
-        condition: service_healthy
+        condition: service_started
     env_file:
       - .env
+    volumes:
+      - ./keys:/app/keys:ro
     restart: unless-stopped
 
   consumer:
@@ -127,7 +133,7 @@ services:
     container_name: order_consumer
     depends_on:
       kafka:
-        condition: service_healthy
+        condition: service_started
       redis:
         condition: service_healthy
     env_file:
@@ -143,6 +149,8 @@ services:
         condition: service_healthy
     env_file:
       - .env
+    volumes:
+      - ./keys:/app/keys:ro
     restart: unless-stopped
 
 volumes:

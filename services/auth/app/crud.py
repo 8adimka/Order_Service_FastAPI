@@ -3,7 +3,8 @@ from sqlalchemy.orm import Session
 
 from . import models, schemas
 
-pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+# Use argon2 as primary (no 72-byte limit) with bcrypt as fallback
+pwd_context = CryptContext(schemes=["argon2", "bcrypt"], deprecated="auto")
 
 
 def get_user_by_email(db: Session, email: str):
@@ -11,7 +12,11 @@ def get_user_by_email(db: Session, email: str):
 
 
 def create_user(db: Session, user: schemas.UserCreate):
-    hashed_password = pwd_context.hash(user.password)
+    # bcrypt has a maximum password length of 72 bytes
+    password = user.password
+    if len(password.encode("utf-8")) > 72:
+        password = password[:72]
+    hashed_password = pwd_context.hash(password)
     db_user = models.User(email=user.email, hashed_password=hashed_password)
     db.add(db_user)
     db.commit()
@@ -19,5 +24,54 @@ def create_user(db: Session, user: schemas.UserCreate):
     return db_user
 
 
+def get_user_by_google_id(db: Session, google_id: str):
+    return db.query(models.User).filter(models.User.google_id == google_id).first()
+
+
+def create_user_from_google(
+    db: Session,
+    email: str,
+    google_id: str,
+    full_name: str | None = None,
+    picture_url: str | None = None,
+    refresh_token: str | None = None,
+):
+    db_user = models.User(
+        email=email,
+        full_name=full_name,
+        picture_url=picture_url,
+        auth_provider=models.AuthProvider.GOOGLE.value
+        if hasattr(models, "AuthProvider")
+        else "google",
+        google_id=google_id,
+        google_refresh_token=refresh_token,
+        is_active=True,
+    )
+    db.add(db_user)
+    db.commit()
+    db.refresh(db_user)
+    return db_user
+
+
+def link_google_to_existing_user(
+    db: Session, user: models.User, google_id: str, refresh_token: str | None = None
+):
+    user.google_id = google_id
+    user.auth_provider = (
+        models.AuthProvider.GOOGLE.value
+        if hasattr(models, "AuthProvider")
+        else "google"
+    )
+    if refresh_token:
+        user.google_refresh_token = refresh_token
+    db.add(user)
+    db.commit()
+    db.refresh(user)
+    return user
+
+
 def verify_password(plain_password: str, hashed_password: str) -> bool:
+    # bcrypt has a maximum password length of 72 bytes
+    if len(plain_password.encode("utf-8")) > 72:
+        plain_password = plain_password[:72]
     return pwd_context.verify(plain_password, hashed_password)

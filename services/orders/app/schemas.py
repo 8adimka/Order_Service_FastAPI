@@ -1,25 +1,27 @@
+import uuid
 from datetime import datetime
 from typing import Dict, List
 
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict, Field
+
+from .models import OrderStatus
 
 
 class OrderCreate(BaseModel):
     items: List[Dict]
-    total_price: float
+    total_price: float = Field(..., gt=0, description="Total price must be positive")
 
 
 class Order(BaseModel):
-    id: str
+    id: uuid.UUID
     user_id: int
     items: List[Dict]
     total_price: float
-    status: str
+    status: OrderStatus
     created_at: datetime
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class OrderUpdate(BaseModel):
-    status: str
+    status: OrderStatus
