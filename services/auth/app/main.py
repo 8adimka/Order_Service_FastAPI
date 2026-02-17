@@ -3,9 +3,6 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from .routers.auth import router
 
-# Миграции должны быть применены отдельно через: alembic upgrade head
-# Таблицы создаются и управляются через Alembic миграции, не через SQLAlchemy
-
 app = FastAPI(title="Auth Service")
 
 app.add_middleware(

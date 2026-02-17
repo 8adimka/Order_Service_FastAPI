@@ -1,7 +1,11 @@
 import os
+import sys
 from logging.config import fileConfig
 
 from alembic import context
+
+# Add the parent directory to sys.path so we can import app modules
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 # this is the Alembic Config object
 config = context.config

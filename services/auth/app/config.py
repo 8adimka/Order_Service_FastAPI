@@ -24,7 +24,13 @@ class Settings(BaseSettings):
 
     @property
     def postgres_auth_url(self) -> str:
-        return f"postgresql://{self.postgres_auth_user}:{self.postgres_auth_password}@{self.postgres_auth_host}:{self.postgres_auth_port}/{self.postgres_auth_db}"
+        # Используем переменные окружения или значения по умолчанию
+        user = os.getenv("POSTGRES_USER", self.postgres_auth_user)
+        password = os.getenv("POSTGRES_AUTH_PASSWORD", self.postgres_auth_password)
+        host = os.getenv("POSTGRES_AUTH_HOST", self.postgres_auth_host)
+        port = os.getenv("POSTGRES_AUTH_PORT", str(self.postgres_auth_port))
+        db = os.getenv("POSTGRES_AUTH_DB", self.postgres_auth_db)
+        return f"postgresql://{user}:{password}@{host}:{port}/{db}"
 
     @property
     def private_key(self) -> str:

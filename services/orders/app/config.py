@@ -23,7 +23,13 @@ class Settings(BaseSettings):
 
     @property
     def postgres_orders_url(self) -> str:
-        return f"postgresql://{self.postgres_orders_user}:{self.postgres_orders_password}@{self.postgres_orders_host}:{self.postgres_orders_port}/{self.postgres_orders_db}"
+        # Используем переменные окружения или значения по умолчанию
+        user = os.getenv("POSTGRES_USER", self.postgres_orders_user)
+        password = os.getenv("POSTGRES_ORDERS_PASSWORD", self.postgres_orders_password)
+        host = os.getenv("POSTGRES_ORDERS_HOST", self.postgres_orders_host)
+        port = os.getenv("POSTGRES_ORDERS_PORT", str(self.postgres_orders_port))
+        db = os.getenv("POSTGRES_ORDERS_DB", self.postgres_orders_db)
+        return f"postgresql://{user}:{password}@{host}:{port}/{db}"
 
     @property
     def public_key(self) -> str:

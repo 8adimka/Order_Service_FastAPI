@@ -6,7 +6,7 @@
 
 ### Сервисы
 
-1. **Auth Service** (Port 8001) - аутентификация и управление JWT токенами
+1. **Auth Service** (Port 8001) - аутентификация и управление JWT токенами (дополнительно добавил Google OAuth2)
 2. **Orders Service** (Port 8000) - управление заказами, кеширование, взаимодействие с Kafka
 3. **Consumer** - прослушивает Kafka очередь и отправляет задачи в Celery
 4. **Celery Worker** - выполняет фоновые задачи обработки заказов
@@ -160,7 +160,7 @@ curl -X POST "http://localhost:8000/orders/" \
 
 ```json
 {
-  "id": "550e8400-e29b-41d4-a716-446655440000",
+  "id": "YOUR_ORDER_ID",
   "user_id": 1,
   "items": [...],
   "total_price": 40.0,
@@ -172,14 +172,14 @@ curl -X POST "http://localhost:8000/orders/" \
 #### Получение заказа (из Redis кеша если доступен)
 
 ```bash
-curl -X GET "http://localhost:8000/orders/550e8400-e29b-41d4-a716-446655440000/" \
+curl -X GET "http://localhost:8000/orders/YOUR_ORDER_ID/" \
   -H "Authorization: Bearer YOUR_ACCESS_TOKEN"
 ```
 
 #### Обновление статуса заказа
 
 ```bash
-curl -X PATCH "http://localhost:8000/orders/550e8400-e29b-41d4-a716-446655440000/" \
+curl -X PATCH "http://localhost:8000/orders/YOUR_ORDER_ID/" \
   -H "Authorization: Bearer YOUR_ACCESS_TOKEN" \
   -H "Content-Type: application/json" \
   -d '{

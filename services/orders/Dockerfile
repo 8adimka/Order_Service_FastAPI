@@ -7,4 +7,9 @@ RUN pip install --no-cache-dir -r requirements.txt
 RUN mkdir -p /app/keys
 
 COPY app/ ./app/
-CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
+COPY alembic/ ./alembic/
+COPY entrypoint_fixed.sh .
+
+RUN chmod +x entrypoint_fixed.sh
+
+CMD ["./entrypoint_fixed.sh"]

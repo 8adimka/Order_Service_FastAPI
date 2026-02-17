@@ -28,7 +28,6 @@ router = APIRouter(prefix="/auth", tags=["auth"])
 
 @router.post("/register/", response_model=dict)
 def register(user: schemas.UserCreate, db: Session = Depends(get_db)):
-    """Регистрация нового пользователя"""
     db_user = crud.get_user_by_email(db, user.email)
     if db_user:
         raise HTTPException(status_code=400, detail="Email already registered")
@@ -40,7 +39,6 @@ def register(user: schemas.UserCreate, db: Session = Depends(get_db)):
 def login_for_access_token(
     form_data: OAuth2PasswordRequestForm = Depends(), db: Session = Depends(get_db)
 ):
-    """Получение JWT токена (OAuth2 Password Flow)"""
     user = crud.get_user_by_email(db, form_data.username)
     if not user or not crud.verify_password(form_data.password, user.hashed_password):
         raise HTTPException(
@@ -58,13 +56,6 @@ def login_for_access_token(
 
 @router.get("/google/login")
 def google_login(request: Request):
-    """
-    Инициирует Google OAuth2 flow.
-    Генерирует CSRF токен (state) и сохраняет в secure cookie.
-
-    Returns:
-        JSON с login_url и установкой secure cookie oauth_state
-    """
     client_id = os.getenv("GOOGLE_CLIENT_ID") or os.getenv("OAUTH_GOOGLE_CLIENT_ID")
     redirect_uri = (
         os.getenv("GOOGLE_REDIRECT_URI")
@@ -74,7 +65,6 @@ def google_login(request: Request):
     if not client_id:
         raise HTTPException(status_code=500, detail="Google client id not configured")
 
-    # Генерируем random state для CSRF защиты
     state = secrets.token_urlsafe(32)
     logger.info("Generated OAuth state for CSRF protection")
 
@@ -87,34 +77,23 @@ def google_login(request: Request):
         f"&scope={scope.replace(' ', '%20')}"
         f"&access_type=offline"
         f"&prompt=consent"
-        f"&state={state}"  # CSRF защита
+        f"&state={state}"
     )
 
-    # Сохранить state в secure cookie
     response = JSONResponse({"login_url": authorization_url})
     response.set_cookie(
         key="oauth_state",
         value=state,
-        max_age=600,  # 10 минут
-        httponly=True,  # Недоступен из JavaScript
-        secure=False,  # TODO: установить True в production (HTTPS)
-        samesite="lax",  # CSRF защита
+        max_age=600,
+        httponly=True,
+        secure=False,
+        samesite="lax",
     )
     return response
 
 
 @router.get("/callback/google", response_model=schemas.TokenResponse)
 async def google_callback(request: Request, db: Session = Depends(get_db)):
-    """
-    Google OAuth2 callback с CSRF проверкой.
-
-    1. Проверка CSRF state параметра
-    2. Обмен code на tokens от Google
-    3. Проверка и верификация id_token
-    4. Создание или обновление пользователя
-    5. Возврат application JWT
-    """
-    # ✅ ШАГ 1: Проверка CSRF state параметра
     state_from_query = request.query_params.get("state")
     state_from_cookie = request.cookies.get("oauth_state")
 
@@ -131,7 +110,6 @@ async def google_callback(request: Request, db: Session = Depends(get_db)):
             status_code=400, detail="Invalid state parameter (CSRF check failed)"
         )
 
-    # ✅ ШАГ 2: Проверка code параметра
     code = request.query_params.get("code")
     error = request.query_params.get("error")
 
@@ -145,7 +123,6 @@ async def google_callback(request: Request, db: Session = Depends(get_db)):
     if not code:
         raise HTTPException(status_code=400, detail="Missing authorization code")
 
-    # ✅ ШАГ 3: Подготовка параметров для обмена
     client_id = os.getenv("GOOGLE_CLIENT_ID") or os.getenv("OAUTH_GOOGLE_CLIENT_ID")
     client_secret = os.getenv("GOOGLE_CLIENT_SECRET") or os.getenv(
         "OAUTH_GOOGLE_CLIENT_SECRET"
@@ -160,7 +137,6 @@ async def google_callback(request: Request, db: Session = Depends(get_db)):
         logger.error("Google OAuth credentials not configured")
         raise HTTPException(status_code=500, detail="Google OAuth not configured")
 
-    # ✅ ШАГ 4: Обмен code на tokens от Google
     token_url = "https://oauth2.googleapis.com/token"
     try:
         async with httpx.AsyncClient() as client:
@@ -191,7 +167,6 @@ async def google_callback(request: Request, db: Session = Depends(get_db)):
         logger.error("No id_token returned by Google")
         raise HTTPException(status_code=400, detail="No id_token returned by Google")
 
-    # ✅ ШАГ 5: Проверка id_token
     try:
         id_info = id_token.verify_oauth2_token(
             id_token_str, google_requests.Request(), client_id
@@ -211,10 +186,8 @@ async def google_callback(request: Request, db: Session = Depends(get_db)):
 
     logger.info(f"Verified Google user: {email}")
 
-    # ✅ ШАГ 6: Создание или обновление пользователя в БД
     user = get_user_by_google_id(db, google_sub)
     if not user:
-        # Проверяем, есть ли пользователь по email (локальная регистрация)
         user_by_email = crud.get_user_by_email(db, email)
         if user_by_email:
             logger.info(f"Linking Google account to existing user: {email}")
@@ -232,12 +205,10 @@ async def google_callback(request: Request, db: Session = Depends(get_db)):
                 refresh_token=tokens.get("refresh_token"),
             )
 
-    # ✅ ШАГ 7: Создание application JWT токена
     access_token = create_access_token(data={"sub": str(user.id), "email": user.email})
 
     logger.info(f"User authenticated via Google: user_id={user.id}")
 
-    # Возврат JSON с access_token
     response = JSONResponse(
         {
             "id": user.id,
@@ -250,6 +221,5 @@ async def google_callback(request: Request, db: Session = Depends(get_db)):
         }
     )
 
-    # Удалить cookie со state (больше не нужен)
     response.delete_cookie("oauth_state")
     return response

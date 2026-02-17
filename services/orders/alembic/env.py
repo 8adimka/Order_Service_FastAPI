@@ -1,7 +1,11 @@
 import os
+import sys
 from logging.config import fileConfig
 
 from alembic import context
+
+# Add the parent directory to sys.path so we can import app modules
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 # this is the Alembic Config object
 config = context.config
@@ -33,6 +37,9 @@ def run_migrations_offline() -> None:
         target_metadata=target_metadata,
         literal_binds=True,
         dialect_opts={"paramstyle": "named"},
+        # Increase version_num length to avoid truncation errors
+        version_table="alembic_version",
+        version_table_pk=True,
     )
 
     with context.begin_transaction():
@@ -45,7 +52,13 @@ def run_migrations_online() -> None:
     connectable = engine
 
     with connectable.connect() as connection:
-        context.configure(connection=connection, target_metadata=target_metadata)
+        context.configure(
+            connection=connection,
+            target_metadata=target_metadata,
+            # Increase version_num length to avoid truncation errors
+            version_table="alembic_version",
+            version_table_pk=True,
+        )
 
         with context.begin_transaction():
             context.run_migrations()
