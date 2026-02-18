@@ -8,22 +8,26 @@ class UserCreate(BaseModel):
 
 class Token(BaseModel):
     access_token: str
+    refresh_token: str
     token_type: str
 
 
-class TokenResponse(BaseModel):
-    """Ответ при успешной OAuth2 аутентификации"""
-
+class AuthResponse(BaseModel):
     id: int
     email: EmailStr
     full_name: str | None = None
     picture_url: str | None = None
     auth_provider: str | None = None
     access_token: str
+    refresh_token: str
     token_type: str
 
     class Config:
         from_attributes = True
+
+
+class RefreshTokenRequest(BaseModel):
+    refresh_token: str
 
 
 class User(BaseModel):

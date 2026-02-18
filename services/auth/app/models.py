@@ -1,7 +1,7 @@
 from datetime import datetime, timezone
 from enum import Enum
 
-from sqlalchemy import Boolean, Column, DateTime, Integer, String
+from sqlalchemy import Boolean, Column, DateTime, Integer, String, Text
 
 from .database import Base
 
@@ -20,7 +20,8 @@ class User(Base):
     picture_url = Column(String, nullable=True)
     auth_provider = Column(String, default=AuthProvider.LOCAL.value, nullable=False)
     google_id = Column(String, unique=True, nullable=True)
-    google_refresh_token = Column(String, nullable=True)
+    encrypted_google_refresh_token = Column(Text, nullable=True)
+    refresh_token = Column(String, nullable=True)
     is_active = Column(Boolean, default=True)
     created_at = Column(
         DateTime, default=lambda: datetime.now(timezone.utc), nullable=False

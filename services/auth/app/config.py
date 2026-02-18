@@ -17,10 +17,15 @@ class Settings(BaseSettings):
 
     algorithm: str = "RS256"
     access_token_expire_minutes: int = 30
+    refresh_token_expire_days: int = 7
 
     # Пути к RSA ключам
     private_key_path: str = "/app/keys/private.pem"
     public_key_path: str = "/app/keys/public.pem"
+
+    google_client_id: str = ""
+    google_client_secret: str = ""
+    google_redirect_uri: str = "http://localhost:8001/auth/callback/google"
 
     @property
     def postgres_auth_url(self) -> str:

@@ -1,7 +1,5 @@
 import logging
-import os
 import secrets
-from datetime import timedelta
 
 import httpx
 from fastapi import APIRouter, Depends, HTTPException, Request, status
@@ -19,23 +17,35 @@ from ..crud import (
     link_google_to_existing_user,
 )
 from ..database import get_db
-from ..dependencies import create_access_token
+from ..dependencies import create_tokens, get_current_user, validate_refresh_token
+from ..google_oauth import get_google_user_info, refresh_google_access_token
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
 
-@router.post("/register/", response_model=dict)
+@router.post("/register/", response_model=schemas.AuthResponse)
 def register(user: schemas.UserCreate, db: Session = Depends(get_db)):
     db_user = crud.get_user_by_email(db, user.email)
     if db_user:
         raise HTTPException(status_code=400, detail="Email already registered")
     created_user = crud.create_user(db=db, user=user)
-    return {"msg": "User created", "user_id": created_user.id}
+    tokens = create_tokens(created_user.id, created_user.email)
+    crud.update_user_refresh_token(db, created_user, tokens["refresh_token"])
+    return {
+        "id": created_user.id,
+        "email": created_user.email,
+        "full_name": created_user.full_name,
+        "picture_url": created_user.picture_url,
+        "auth_provider": created_user.auth_provider,
+        "access_token": tokens["access_token"],
+        "refresh_token": tokens["refresh_token"],
+        "token_type": tokens["token_type"],
+    }
 
 
-@router.post("/token/", response_model=schemas.Token)
+@router.post("/token/", response_model=schemas.AuthResponse)
 def login_for_access_token(
     form_data: OAuth2PasswordRequestForm = Depends(), db: Session = Depends(get_db)
 ):
@@ -46,23 +56,48 @@ def login_for_access_token(
             detail="Incorrect email or password",
             headers={"WWW-Authenticate": "Bearer"},
         )
-    access_token_expires = timedelta(minutes=settings.access_token_expire_minutes)
-    access_token = create_access_token(
-        data={"sub": str(user.id), "email": user.email},
-        expires_delta=access_token_expires,
-    )
-    return {"access_token": access_token, "token_type": "bearer"}
+    tokens = create_tokens(user.id, user.email)
+    crud.update_user_refresh_token(db, user, tokens["refresh_token"])
+    return {
+        "id": user.id,
+        "email": user.email,
+        "full_name": user.full_name,
+        "picture_url": user.picture_url,
+        "auth_provider": user.auth_provider,
+        "access_token": tokens["access_token"],
+        "refresh_token": tokens["refresh_token"],
+        "token_type": tokens["token_type"],
+    }
+
+
+@router.post("/refresh/", response_model=schemas.AuthResponse)
+def refresh_tokens(
+    refresh_request: schemas.RefreshTokenRequest, db: Session = Depends(get_db)
+):
+    user_id = validate_refresh_token(refresh_request.refresh_token, db)
+    user = crud.get_user_by_id(db, user_id)
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="User not found",
+        )
+    tokens = create_tokens(user.id, user.email)
+    crud.update_user_refresh_token(db, user, tokens["refresh_token"])
+    return {
+        "id": user.id,
+        "email": user.email,
+        "full_name": user.full_name,
+        "picture_url": user.picture_url,
+        "auth_provider": user.auth_provider,
+        "access_token": tokens["access_token"],
+        "refresh_token": tokens["refresh_token"],
+        "token_type": tokens["token_type"],
+    }
 
 
 @router.get("/google/login")
 def google_login(request: Request):
-    client_id = os.getenv("GOOGLE_CLIENT_ID") or os.getenv("OAUTH_GOOGLE_CLIENT_ID")
-    redirect_uri = (
-        os.getenv("GOOGLE_REDIRECT_URI")
-        or os.getenv("OAUTH_GOOGLE_REDIRECT_URI")
-        or "http://localhost:8001/auth/callback/google"
-    )
-    if not client_id:
+    if not settings.google_client_id:
         raise HTTPException(status_code=500, detail="Google client id not configured")
 
     state = secrets.token_urlsafe(32)
@@ -71,8 +106,8 @@ def google_login(request: Request):
     scope = "openid email profile"
     authorization_url = (
         "https://accounts.google.com/o/oauth2/v2/auth"
-        f"?client_id={client_id}"
-        f"&redirect_uri={redirect_uri}"
+        f"?client_id={settings.google_client_id}"
+        f"&redirect_uri={settings.google_redirect_uri}"
         f"&response_type=code"
         f"&scope={scope.replace(' ', '%20')}"
         f"&access_type=offline"
@@ -92,7 +127,7 @@ def google_login(request: Request):
     return response
 
 
-@router.get("/callback/google", response_model=schemas.TokenResponse)
+@router.get("/callback/google", response_model=schemas.AuthResponse)
 async def google_callback(request: Request, db: Session = Depends(get_db)):
     state_from_query = request.query_params.get("state")
     state_from_cookie = request.cookies.get("oauth_state")
@@ -123,17 +158,7 @@ async def google_callback(request: Request, db: Session = Depends(get_db)):
     if not code:
         raise HTTPException(status_code=400, detail="Missing authorization code")
 
-    client_id = os.getenv("GOOGLE_CLIENT_ID") or os.getenv("OAUTH_GOOGLE_CLIENT_ID")
-    client_secret = os.getenv("GOOGLE_CLIENT_SECRET") or os.getenv(
-        "OAUTH_GOOGLE_CLIENT_SECRET"
-    )
-    redirect_uri = (
-        os.getenv("GOOGLE_REDIRECT_URI")
-        or os.getenv("OAUTH_GOOGLE_REDIRECT_URI")
-        or "http://localhost:8001/auth/callback/google"
-    )
-
-    if not client_id or not client_secret:
+    if not settings.google_client_id or not settings.google_client_secret:
         logger.error("Google OAuth credentials not configured")
         raise HTTPException(status_code=500, detail="Google OAuth not configured")
 
@@ -144,9 +169,9 @@ async def google_callback(request: Request, db: Session = Depends(get_db)):
                 token_url,
                 data={
                     "code": code,
-                    "client_id": client_id,
-                    "client_secret": client_secret,
-                    "redirect_uri": redirect_uri,
+                    "client_id": settings.google_client_id,
+                    "client_secret": settings.google_client_secret,
+                    "redirect_uri": settings.google_redirect_uri,
                     "grant_type": "authorization_code",
                 },
                 headers={"Accept": "application/json"},
@@ -169,7 +194,7 @@ async def google_callback(request: Request, db: Session = Depends(get_db)):
 
     try:
         id_info = id_token.verify_oauth2_token(
-            id_token_str, google_requests.Request(), client_id
+            id_token_str, google_requests.Request(), settings.google_client_id
         )
     except ValueError as e:
         logger.error(f"Invalid Google id_token: {str(e)}")
@@ -205,7 +230,8 @@ async def google_callback(request: Request, db: Session = Depends(get_db)):
                 refresh_token=tokens.get("refresh_token"),
             )
 
-    access_token = create_access_token(data={"sub": str(user.id), "email": user.email})
+    our_tokens = create_tokens(user.id, user.email)
+    crud.update_user_refresh_token(db, user, our_tokens["refresh_token"])
 
     logger.info(f"User authenticated via Google: user_id={user.id}")
 
@@ -216,10 +242,58 @@ async def google_callback(request: Request, db: Session = Depends(get_db)):
             "full_name": user.full_name,
             "picture_url": user.picture_url,
             "auth_provider": user.auth_provider,
-            "access_token": access_token,
-            "token_type": "bearer",
+            "access_token": our_tokens["access_token"],
+            "refresh_token": our_tokens["refresh_token"],
+            "token_type": our_tokens["token_type"],
         }
     )
 
     response.delete_cookie("oauth_state")
     return response
+
+
+@router.post("/google/refresh-info", response_model=schemas.UserOut)
+async def refresh_google_user_info(
+    user_id: int = Depends(get_current_user), db: Session = Depends(get_db)
+):
+    tokens = await refresh_google_access_token(db, user_id)
+    if not tokens:
+        raise HTTPException(
+            status_code=400,
+            detail="Failed to refresh Google access token",
+        )
+
+    access_token = tokens.get("access_token")
+    if not access_token:
+        raise HTTPException(
+            status_code=400,
+            detail="No access token in Google response",
+        )
+
+    user_info = await get_google_user_info(access_token)
+    if not user_info:
+        raise HTTPException(
+            status_code=400,
+            detail="Failed to fetch user info from Google",
+        )
+
+    user = crud.get_user_by_id(db, user_id)
+    if not user:
+        raise HTTPException(
+            status_code=404,
+            detail="User not found",
+        )
+
+    user.full_name = user_info.get("name", user.full_name)
+    user.picture_url = user_info.get("picture", user.picture_url)
+    db.add(user)
+    db.commit()
+    db.refresh(user)
+
+    return {
+        "id": user.id,
+        "email": user.email,
+        "full_name": user.full_name,
+        "picture_url": user.picture_url,
+        "auth_provider": user.auth_provider,
+    }

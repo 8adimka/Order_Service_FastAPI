@@ -1,3 +1,4 @@
+import secrets
 from datetime import datetime, timedelta, timezone
 from typing import Annotated
 
@@ -17,8 +18,25 @@ def create_access_token(data: dict, expires_delta: timedelta | None = None) -> s
     to_encode = data.copy()
     expire = datetime.now(timezone.utc) + (expires_delta or timedelta(minutes=15))
     to_encode.update({"exp": expire})
-    # Используем приватный ключ для подписи токена
     return jwt.encode(to_encode, settings.private_key, algorithm=settings.algorithm)
+
+
+def create_refresh_token() -> str:
+    return secrets.token_urlsafe(64)
+
+
+def create_tokens(user_id: int, email: str) -> dict:
+    access_token_expires = timedelta(minutes=settings.access_token_expire_minutes)
+    access_token = create_access_token(
+        data={"sub": str(user_id), "email": email},
+        expires_delta=access_token_expires,
+    )
+    refresh_token = create_refresh_token()
+    return {
+        "access_token": access_token,
+        "refresh_token": refresh_token,
+        "token_type": "bearer",
+    }
 
 
 def get_current_user(
@@ -30,7 +48,6 @@ def get_current_user(
         headers={"WWW-Authenticate": "Bearer"},
     )
     try:
-        # Используем публичный ключ для проверки токена
         payload = jwt.decode(
             token, settings.public_key, algorithms=[settings.algorithm]
         )
@@ -43,3 +60,21 @@ def get_current_user(
     if user is None:
         raise credentials_exception
     return int(user_id)
+
+
+def validate_refresh_token(refresh_token: str, db: Session) -> int:
+    user = get_user_by_refresh_token(db, refresh_token)
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid refresh token",
+        )
+    return user.id
+
+
+def get_user_by_refresh_token(db: Session, refresh_token: str):
+    from . import models
+
+    return (
+        db.query(models.User).filter(models.User.refresh_token == refresh_token).first()
+    )
