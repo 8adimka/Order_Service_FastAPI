@@ -159,60 +159,6 @@ curl -X POST "http://localhost:8001/auth/refresh/" \
 
 **Ответ:** Такая же структура как при логине, с новыми access и refresh токенами.
 
-#### Google OAuth 2.0 Flow
-
-1. **Получение URL для авторизации через Google:**
-
-```bash
-curl -X GET "http://localhost:8001/auth/google/login"
-```
-
-**Ответ:**
-
-```json
-{
-  "login_url": "https://accounts.google.com/o/oauth2/v2/auth?client_id=...&redirect_uri=...&response_type=code&scope=openid%20email%20profile&access_type=offline&prompt=consent&state=..."
-}
-```
-
-1. **Пользователь переходит по ссылке и авторизуется в Google**
-2. **Google перенаправляет на callback URL с кодом**
-3. **Callback endpoint автоматически обрабатывает код и выдает токены:**
-
-После успешной авторизации пользователь получает ответ с токенами:
-
-```json
-{
-  "id": 2,
-  "email": "user@gmail.com",
-  "full_name": "John Doe",
-  "picture_url": "https://lh3.googleusercontent.com/...",
-  "auth_provider": "google",
-  "access_token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
-  "refresh_token": "random_refresh_token_string",
-  "token_type": "bearer"
-}
-```
-
-#### Обновление информации пользователя из Google
-
-```bash
-curl -X POST "http://localhost:8001/auth/google/refresh-info/" \
-  -H "Authorization: Bearer YOUR_ACCESS_TOKEN"
-```
-
-**Ответ:**
-
-```json
-{
-  "id": 2,
-  "email": "user@gmail.com",
-  "full_name": "John Doe Updated",
-  "picture_url": "https://lh3.googleusercontent.com/updated_avatar.jpg",
-  "auth_provider": "google"
-}
-```
-
 ### Orders Service (Port 8000)
 
 #### Создание заказа (требует авторизации)
@@ -266,6 +212,60 @@ curl -X PATCH "http://localhost:8000/orders/YOUR_ORDER_ID/" \
 ```bash
 curl -X GET "http://localhost:8000/orders/user/1/" \
   -H "Authorization: Bearer YOUR_ACCESS_TOKEN"
+```
+
+#### Google OAuth 2.0 Flow
+
+1. **Получение URL для авторизации через Google:**
+
+```bash
+curl -X GET "http://localhost:8001/auth/google/login"
+```
+
+**Ответ:**
+
+```json
+{
+  "login_url": "https://accounts.google.com/o/oauth2/v2/auth?client_id=...&redirect_uri=...&response_type=code&scope=openid%20email%20profile&access_type=offline&prompt=consent&state=..."
+}
+```
+
+1. **Пользователь переходит по ссылке и авторизуется в Google**
+2. **Google перенаправляет на callback URL с кодом**
+3. **Callback endpoint автоматически обрабатывает код и выдает токены:**
+
+После успешной авторизации пользователь получает ответ с токенами:
+
+```json
+{
+  "id": 2,
+  "email": "user@gmail.com",
+  "full_name": "John Doe",
+  "picture_url": "https://lh3.googleusercontent.com/...",
+  "auth_provider": "google",
+  "access_token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
+  "refresh_token": "random_refresh_token_string",
+  "token_type": "bearer"
+}
+```
+
+#### Обновление информации пользователя из Google
+
+```bash
+curl -X POST "http://localhost:8001/auth/google/refresh-info/" \
+  -H "Authorization: Bearer YOUR_ACCESS_TOKEN"
+```
+
+**Ответ:**
+
+```json
+{
+  "id": 2,
+  "email": "user@gmail.com",
+  "full_name": "John Doe Updated",
+  "picture_url": "https://lh3.googleusercontent.com/updated_avatar.jpg",
+  "auth_provider": "google"
+}
 ```
 
 ## Мониторинг
